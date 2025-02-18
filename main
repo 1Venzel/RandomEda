@@ -1,0 +1,117 @@
+import asyncio
+import random
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackContext
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+# Список блюд с классификацией
+dishes_by_category = {
+    "main": {
+        "name": "Основные блюда",
+        "dishes": ["Пицца", "Паста", "Стейк", "Лазанья", "Пельмени", "Рамен", "Плов", "Шашлык"]
+    },
+    "snacks": {
+        "name": "Закуски",
+        "dishes": ["Салат Цезарь", "Греческий салат", "Фалафель", "Хумус", "Хот-дог", "Буррито"]
+    },
+    "fastfood": {
+        "name": "Фастфуд",
+        "dishes": ["Бургер", "Гамбургер", "Чизбургер", "Хот-дог", "Картофель фри"]
+    },
+    "soups": {
+        "name": "Супы",
+        "dishes": ["Куриный суп", "Борщ", "Солянка", "Том-ям", "Фо-бо"]
+    },
+    "desserts": {
+        "name": "Десерты",
+        "dishes": ["Тирамису", "Чизкейк", "Панкейки", "Вафли", "Блины", "Сырники"]
+    }
+}
+
+# Список пользователей, подписанных на рассылку
+subscribed_users = set()
+
+# Команда /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Привет! Я бот, который поможет тебе выбрать блюдо.\n"
+        "Используй команды:\n"
+        "/food - случайное блюдо из любой категории\n"
+        "/category - выбрать категорию и получить блюдо из неё\n"
+        "/subscribe - подписаться на ежедневную рассылку\n"
+        "/unsubscribe - отписаться от рассылки"
+    )
+
+# Команда /food
+async def food(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    category_key = random.choice(list(dishes_by_category.keys()))
+    category = dishes_by_category[category_key]
+    dish = random.choice(category["dishes"])
+
+    message = (
+        f"<b>Сегодня тебе стоит попробовать:</b>\n"
+        f"🍽 <b>{dish}</b>\n"
+        f"📂 <i>Категория:</i> {category['name']}\n"
+        f"😋 Приятного аппетита!"
+    )
+
+    await update.message.reply_text(message, parse_mode="HTML")
+
+# Команда /subscribe
+async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    subscribed_users.add(user_id)
+    await update.message.reply_text("Ты подписался на ежедневную рассылку! 😊")
+
+# Команда /unsubscribe
+async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id in subscribed_users:
+        subscribed_users.remove(user_id)
+        await update.message.reply_text("Ты отписался от рассылки. 😢")
+    else:
+        await update.message.reply_text("Ты не был подписан на рассылку.")
+
+# Функция для рассылки
+async def send_daily_message(context: CallbackContext):
+    for user_id in subscribed_users:
+        try:
+            category_key = random.choice(list(dishes_by_category.keys()))
+            category = dishes_by_category[category_key]
+            dish = random.choice(category["dishes"])
+
+            message = (
+                f"<b>Ежедневное напоминание:</b>\n"
+                f"🍽 <b>{dish}</b>\n"
+                f"📂 <i>Категория:</i> {category['name']}\n"
+                f"😋 Приятного аппетита!"
+            )
+
+            await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML")
+        except Exception as e:
+            print(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+
+# Запуск бота
+if __name__ == "__main__":
+    application = ApplicationBuilder().token("7844042379:AAH640z5wUHaYj68CRrqsoSan-Nt6Hc5974").build()
+
+    # Регистрируем команды
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("food", food))
+    application.add_handler(CommandHandler("subscribe", subscribe))
+    application.add_handler(CommandHandler("unsubscribe", unsubscribe))
+
+    # Настраиваем планировщик
+    loop = asyncio.get_event_loop()
+    scheduler = AsyncIOScheduler(event_loop=loop)
+
+    scheduler.add_job(
+        send_daily_message,
+        trigger=CronTrigger(hour=7, minute=27),
+        args=[application.bot],
+    )
+    scheduler.start()
+
+    # Запускаем бота
+    application.run_polling()
